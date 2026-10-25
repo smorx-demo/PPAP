@@ -198,6 +198,45 @@ reference workbook's SPC study (sample size 25, 5 subgroups of 5,
 USL=76/LSL=75.645, giving `Cp≈1.072`, `Cpk≈0.9537`) and the Checking Aids
 calibration-due rule (`dueDate < today + 15 days` → "Due is near").
 
+## Process Flow (element 5) assembly structure
+
+- Stage → Sub-assembly → Child part (user request 2026-10-22): `PfcStage`
+  (per element 5) → `PfcSubAssembly` (`inMainAssembly` = the main-assembly
+  checkbox) → existing `ChildPart` rows via nullable `subAssemblyId`.
+  Child parts stay the BOM/route source for PFMEA & Control Plan; deleting a
+  stage/sub-assembly only unassigns its parts (FK `SET NULL`). The main
+  assembly is the PPAP's part itself. UI: `pfc-assembly-structure.tsx`
+  (editor + checkboxes) and `pfc-assembly-tree.tsx` (top-to-bottom process
+  flow, user request 2026-10-25: steps before the stages → Stage 1, 2, 3…
+  side by side → their sub-assemblies with their steps below (child parts
+  only on hover) → all merge down into the main assembly). Not yet in the print view / Excel.
+- The element 5 page shows only the assembly structure (plus Excel import /
+  export and sign-off): the "Child Parts (BOM) & Routes" grid
+  (`pfc-child-parts-grid.tsx`) and the "Generated Flow Chart"
+  (`pfc-flow-chart.tsx`) were taken off the screen per user request
+  2026-10-25. The components still exist; the print view is unchanged.
+- Auto-numbering (user request 2026-10-25): stages, sub-assemblies and their
+  child parts are never named/typed — "Add stage" / "Add sub-assembly" are
+  plain buttons, and the UI shows "Stage 2", "Sub-assembly 2.1", child part
+  "2.1.1", computed positionally by `lib/calc/pfc-numbering.ts` (not stored;
+  reordering/deleting renumbers). `PfcStage.name` / `PfcSubAssembly.partNo`
+  / `description` stay in the schema but are written blank. "Add child part
+  1.1.N" likewise creates the part in one click (blank part no. /
+  description, qty 1); its BOM details are optional, filled in via the
+  chip's Edit (`updateChildPart`), so `childPartSchema` allows blanks — the
+  BOM grid's own add form still requires them client-side.
+- Process steps on the structure (user request 2026-10-25): "+ Add step"
+  dropdowns (Operation master; Raw material / Kitting / Full welding added
+  by migration `20261025120000_pfc_structure_process_steps`) before the
+  stages, on each sub-assembly and on each child part. Stored as ordinary
+  `Route`/`RouteStep`s: `Route.preStage` (one per element) and
+  `Route.subAssemblyId` (cascade-deleted with the sub-assembly); child parts
+  use their existing BOM route. `addStructureStep` creates the route on first
+  use and shares `addRouteStep`'s auto-Inspection-after rule. The main
+  assembly route is `childPartId`, `subAssemblyId` null and `preStage`
+  false — filter on all three. `getProcessStepList` (PFMEA / Control Plan)
+  orders before-stages → child parts → sub-assemblies → main assembly.
+
 ## Instruments / Checking Aids (element 16)
 
 - `Instrument` is a global master (not per PPAP). Status is never stored:

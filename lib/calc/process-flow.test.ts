@@ -66,6 +66,23 @@ describe("deriveProcessStepList", () => {
     expect(steps.map((s) => s.operationCode)).toEqual(["PLASMA_CUTTING", "INSPECTION", "CHAMFERING"]);
   });
 
+  it("puts the before-stages steps first and sub-assembly steps between child parts and the main assembly", () => {
+    const step = (operationCode: string, sequence: number): RouteInput["steps"][number] => ({
+      operationCode,
+      operationName: operationCode,
+      symbol: "OPERATION",
+      sequence,
+    });
+    const steps = deriveProcessStepList([
+      { childPartItemNo: null, steps: [step("PACKING", 0)] },
+      { childPartItemNo: null, structure: { kind: "SUB_ASSEMBLY", rank: 2 }, steps: [step("FULL_WELDING", 0)] },
+      { childPartItemNo: null, structure: { kind: "SUB_ASSEMBLY", rank: 1 }, steps: [step("TACK_WELDING", 0)] },
+      { childPartItemNo: 1, steps: [step("PLASMA_CUTTING", 0)] },
+      { childPartItemNo: null, structure: { kind: "PRE_STAGE" }, steps: [step("RAW_MATERIAL", 0), step("KITTING", 1)] },
+    ]);
+    expect(steps.map((s) => s.operationCode)).toEqual(["RAW_MATERIAL", "KITTING", "PLASMA_CUTTING", "TACK_WELDING", "FULL_WELDING", "PACKING"]);
+  });
+
   it("returns an empty list for no routes", () => {
     expect(deriveProcessStepList([])).toEqual([]);
   });

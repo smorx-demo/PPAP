@@ -427,6 +427,7 @@ model PpapElement {
   dfmeaDetail            DfmeaDetail?
   customerDisposition    CustomerDisposition?
   childParts             ChildPart[]
+  pfcStages              PfcStage[]
   routes                 Route[]
   pfmeaProcessSteps      PfmeaProcessStep[]
   controlPlanDetail      ControlPlanDetail?
@@ -936,6 +937,10 @@ model ChildPart {
   parentChildPart   ChildPart?  @relation("ChildPartParent", fields: [parentChildPartId], references: [id])
   children          ChildPart[] @relation("ChildPartParent")
 
+  /// Sub-assembly this part goes into (the Stage → Sub-assembly → Child part tree); null = not yet assigned.
+  subAssemblyId String?
+  subAssembly   PfcSubAssembly? @relation(fields: [subAssemblyId], references: [id], onDelete: SetNull)
+
   sortOrder Int      @default(0)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -944,6 +949,44 @@ model ChildPart {
 
   @@unique([ppapElementId, itemNo])
   @@map("child_parts")
+}
+
+/// Manufacturing stage on the Process Flow Chart (e.g. "Stage 1 — Fabrication").
+/// Stages group sub-assemblies; the main assembly is built from the
+/// sub-assemblies ticked `inMainAssembly`.
+model PfcStage {
+  id            String      @id @default(cuid())
+  ppapElementId String
+  ppapElement   PpapElement @relation(fields: [ppapElementId], references: [id])
+
+  name      String
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  subAssemblies PfcSubAssembly[]
+
+  @@index([ppapElementId])
+  @@map("pfc_stages")
+}
+
+model PfcSubAssembly {
+  id      String   @id @default(cuid())
+  stageId String
+  stage   PfcStage @relation(fields: [stageId], references: [id], onDelete: Cascade)
+
+  partNo         String
+  description    String
+  inMainAssembly Boolean  @default(false)
+  sortOrder      Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  childParts ChildPart[]
+  route      Route?
+
+  @@index([stageId])
+  @@map("pfc_sub_assemblies")
 }
 
 /// One route per ChildPart, plus exactly one extra route per element with
@@ -959,6 +1002,15 @@ model Route {
   childPart   ChildPart? @relation(fields: [childPartId], references: [id])
   label       String? // e.g. "Main Assembly" when childPartId is null
 
+  /// Process steps of a sub-assembly (e.g. tack welding → full welding)
+  /// on the assembly structure; null for every other kind of route.
+  subAssemblyId String?         @unique
+  subAssembly   PfcSubAssembly? @relation(fields: [subAssemblyId], references: [id], onDelete: Cascade)
+  /// The steps before the stages (e.g. raw material → inspection → kitting);
+  /// at most one per element. The main-assembly route is the one with
+  /// childPartId, subAssemblyId null and preStage false.
+  preStage Boolean @default(false)
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -970,7 +1022,7 @@ model Route {
 model RouteStep {
   id      String @id @default(cuid())
   routeId String
-  route   Route  @relation(fields: [routeId], references: [id])
+  route   Route  @relation(fields: [routeId], references: [id], onDelete: Cascade)
 
   operationId String
   operation   Operation @relation(fields: [operationId], references: [id])

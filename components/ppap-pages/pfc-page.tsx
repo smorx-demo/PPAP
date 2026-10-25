@@ -4,9 +4,9 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { StatusBadge, ApplicabilityBadge } from "@/components/status-badge";
 import { SignatureBlock } from "@/components/signature-block";
-import { PfcChildPartsGrid } from "@/components/ppap-pages/pfc-child-parts-grid";
-import { PfcFlowChart } from "@/components/ppap-pages/pfc-flow-chart";
 import { PfcExcelActions } from "@/components/ppap-pages/pfc-excel-actions";
+import { PfcAssemblyStructure } from "@/components/ppap-pages/pfc-assembly-structure";
+import { numberAssemblyStructure } from "@/lib/calc/pfc-numbering";
 
 export async function PfcPage({ ppapId }: { ppapId: string }) {
   const element = await prisma.ppapElement.findUniqueOrThrow({
@@ -15,22 +15,65 @@ export async function PfcPage({ ppapId }: { ppapId: string }) {
       preparedBy: true,
       checkedBy: true,
       approvedBy: true,
-      childParts: {
+      // Only for the "add existing BOM part" picker — the BOM grid and the
+      // generated flow chart are not shown on this page (user request
+      // 2026-10-25); they remain in the print view.
+      childParts: { orderBy: { sortOrder: "asc" }, select: { id: true, itemNo: true, partNo: true, description: true, subAssemblyId: true } },
+    },
+  });
+
+  const stepsSelect = {
+    steps: { orderBy: { sequence: "asc" }, select: { id: true, operation: { select: { name: true, symbol: true } } } },
+  } as const;
+  const flatSteps = (route: { steps: { id: string; operation: { name: string; symbol: string } }[] } | null) =>
+    (route?.steps ?? []).map((s) => ({ id: s.id, name: s.operation.name, symbol: s.operation.symbol }));
+  const childPartSelect = {
+    id: true,
+    itemNo: true,
+    partNo: true,
+    description: true,
+    qtyPerAssembly: true,
+    side: true,
+    type: true,
+    parentChildPartId: true,
+    route: { select: stepsSelect },
+  } as const;
+  const stageRows = await prisma.pfcStage.findMany({
+    where: { ppapElementId: element.id },
+    orderBy: { sortOrder: "asc" },
+    include: {
+      subAssemblies: {
         orderBy: { sortOrder: "asc" },
-        include: { route: { include: { steps: { orderBy: { sequence: "asc" }, include: { operation: true } } } } },
-      },
-      routes: {
-        where: { childPartId: null },
-        include: { steps: { orderBy: { sequence: "asc" }, include: { operation: true } } },
+        include: { childParts: { orderBy: { sortOrder: "asc" }, select: childPartSelect }, route: { select: stepsSelect } },
       },
     },
   });
+  const stages = numberAssemblyStructure(
+    stageRows.map((stage) => ({
+      ...stage,
+      subAssemblies: stage.subAssemblies.map(({ route, childParts, ...sub }) => ({
+        ...sub,
+        steps: flatSteps(route),
+        childParts: childParts.map(({ route: cpRoute, ...cp }) => ({ ...cp, steps: flatSteps(cpRoute) })),
+      })),
+    })),
+  );
+  const preStageRoute = await prisma.route.findFirst({ where: { ppapElementId: element.id, preStage: true }, select: stepsSelect });
+  const preStageSteps = flatSteps(preStageRoute);
+  const ppap = await prisma.ppap.findUniqueOrThrow({
+    where: { id: ppapId },
+    select: { status: true, partRevision: { select: { part: { select: { partNumber: true, partName: true } } } } },
+  });
+  const ppapClosed = ppap.status === "CLOSED";
+  const mainAssembly = { partNo: ppap.partRevision.part.partNumber, name: ppap.partRevision.part.partName };
+  const unassigned = element.childParts
+    .filter((c) => !c.subAssemblyId)
+    .map((c) => ({ id: c.id, itemNo: c.itemNo, partNo: c.partNo, description: c.description }));
 
   const operations = await prisma.operation.findMany({ orderBy: { sortOrder: "asc" } });
   const users = await prisma.user.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } });
 
   const locked = element.status === "APPROVED";
-  const mainRoute = element.routes[0] ?? null;
 
   return (
     <main className="mx-auto max-w-7xl space-y-4 p-6">
@@ -58,18 +101,16 @@ export async function PfcPage({ ppapId }: { ppapId: string }) {
               <PfcExcelActions ppapElementId={element.id} locked={locked} />
 
               <section>
-                <h3 className="mb-2 text-sm font-semibold">Child Parts (BOM) &amp; Routes</h3>
-                <PfcChildPartsGrid
+                <h3 className="mb-2 text-sm font-semibold">Stages, Sub-assemblies &amp; Main Assembly</h3>
+                <PfcAssemblyStructure
                   ppapElementId={element.id}
-                  locked={locked}
-                  childParts={element.childParts}
-                  operations={operations}
+                  locked={locked || ppapClosed}
+                  mainAssembly={mainAssembly}
+                  stages={stages}
+                  preStageSteps={preStageSteps}
+                  operations={operations.map((o) => ({ id: o.id, name: o.name }))}
+                  unassigned={unassigned}
                 />
-              </section>
-
-              <section>
-                <h3 className="mb-2 text-sm font-semibold">Generated Flow Chart</h3>
-                <PfcFlowChart childParts={element.childParts} mainRoute={mainRoute} />
               </section>
             </>
           )}

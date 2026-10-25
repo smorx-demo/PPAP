@@ -263,7 +263,7 @@ export async function importPfcWorkbook(workbook: ExcelJS.Workbook, ppapElementI
 /// nothing if a main-assembly route (childPartId null) already exists, so
 /// re-running a child-part import never duplicates or resets it.
 export async function ensureMainAssemblyRoute(ppapElementId: string): Promise<void> {
-  const existing = await prisma.route.findFirst({ where: { ppapElementId, childPartId: null } });
+  const existing = await prisma.route.findFirst({ where: { ppapElementId, childPartId: null, subAssemblyId: null, preStage: false } });
   if (existing) return;
 
   const operations = await prisma.operation.findMany();

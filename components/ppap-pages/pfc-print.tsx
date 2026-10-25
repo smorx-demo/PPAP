@@ -24,7 +24,7 @@ export async function PfcPrint({ ppapId }: { ppapId: string }) {
         include: { route: { include: { steps: { orderBy: { sequence: "asc" }, include: { operation: true } } } } },
       },
       routes: {
-        where: { childPartId: null },
+        where: { childPartId: null, subAssemblyId: null, preStage: false },
         include: { steps: { orderBy: { sequence: "asc" }, include: { operation: true } } },
       },
     },

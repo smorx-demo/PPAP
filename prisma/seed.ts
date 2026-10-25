@@ -89,9 +89,12 @@ async function main() {
   // The 20 operations named in the spec, plus three more (Material
   // Receipt, Storage, Nesting) needed for the main-assembly route
   // template, which the "5. PFC" sheet's per-child-part columns don't
-  // cover on their own.
+  // cover on their own. Raw material, Kitting and Full welding were added
+  // for the assembly-structure step dropdowns (migration
+  // 20261025120000_pfc_structure_process_steps).
   const OPERATIONS: { code: string; name: string; symbol: "OPERATION" | "INSPECTION" | "STORAGE" | "TRANSPORT" | "DELAY"; defaultInspectionAfter?: boolean }[] = [
     { code: "MATERIAL_RECEIPT", name: "Material Receipt", symbol: "TRANSPORT" },
+    { code: "RAW_MATERIAL", name: "Raw material", symbol: "STORAGE", defaultInspectionAfter: true },
     { code: "STORAGE", name: "Storage", symbol: "STORAGE" },
     { code: "NESTING", name: "Nesting", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "PLASMA_CUTTING", name: "Plasma cutting", symbol: "OPERATION", defaultInspectionAfter: true },
@@ -105,9 +108,11 @@ async function main() {
     { code: "DRILLING_TAPPING", name: "Drilling & tapping", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "BENDING", name: "Bending", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "ROLLING", name: "Rolling", symbol: "OPERATION", defaultInspectionAfter: true },
+    { code: "KITTING", name: "Kitting", symbol: "OPERATION" },
     { code: "SUB_ASSEMBLY", name: "Sub assembly", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "TACK_WELDING", name: "Tack welding", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "WELDING", name: "Welding", symbol: "OPERATION", defaultInspectionAfter: true },
+    { code: "FULL_WELDING", name: "Full welding", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "GRINDING_DRESSING", name: "Grinding/Dressing", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "SHOT_BLASTING", name: "Shot blasting", symbol: "OPERATION", defaultInspectionAfter: true },
     { code: "PAINTING", name: "Painting", symbol: "OPERATION", defaultInspectionAfter: true },
@@ -119,8 +124,8 @@ async function main() {
     const op = OPERATIONS[i];
     await prisma.operation.upsert({
       where: { code: op.code },
-      update: {},
-      create: { ...op, sortOrder: i },
+      update: { sortOrder: i * 10 },
+      create: { ...op, sortOrder: i * 10 },
     });
   }
 

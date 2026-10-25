@@ -67,6 +67,7 @@ export async function clonePpap(sourcePpapId: string, target: CloneTarget, opts:
   const cea = await prisma.ceaDetail.findUnique({ where: { ppapElementId: from(3) } });
   const ceaAttachments = await prisma.ceaAttachment.findMany({ where: { ppapElementId: from(3) } });
   const dfmea = await prisma.dfmeaDetail.findUnique({ where: { ppapElementId: from(4) }, include: { rows: true } });
+  const pfcStages = await prisma.pfcStage.findMany({ where: { ppapElementId: from(5) }, include: { subAssemblies: true } });
   const childParts = await prisma.childPart.findMany({ where: { ppapElementId: from(5) } });
   const routes = await prisma.route.findMany({ where: { ppapElementId: from(5) }, include: { steps: true } });
   const pfmeaSteps = await prisma.pfmeaProcessStep.findMany({ where: { ppapElementId: from(6) }, include: { rows: true } });
@@ -170,16 +171,29 @@ export async function clonePpap(sourcePpapId: string, target: CloneTarget, opts:
         await many("dfmeaRow", rows.map((r) => copyOf(r, randomUUID(), { dfmeaDetailId: detailId })));
       }
 
-      // 5 — PFC: child parts (parents before children), routes, steps
+      // 5 — PFC: stages, sub-assemblies, child parts (parents before children), routes, steps
+      const stageMap = idsFor(pfcStages);
+      await many("pfcStage", pfcStages.map(({ subAssemblies: _s, ...s }) => copyOf(s as Row, stageMap.get(s.id)!, { ppapElementId: to(5) })));
+      const subAssemblies = pfcStages.flatMap((s) => s.subAssemblies);
+      const subMap = idsFor(subAssemblies);
+      await many("pfcSubAssembly", subAssemblies.map((r) => copyOf(r, subMap.get(r.id)!, { stageId: stageMap.get(r.stageId)! })));
       const cpMap = idsFor(childParts);
       const remapChild = (r: (typeof childParts)[number]) =>
-        copyOf(r, cpMap.get(r.id)!, { ppapElementId: to(5), parentChildPartId: r.parentChildPartId ? cpMap.get(r.parentChildPartId) ?? null : null });
+        copyOf(r, cpMap.get(r.id)!, {
+          ppapElementId: to(5),
+          parentChildPartId: r.parentChildPartId ? cpMap.get(r.parentChildPartId) ?? null : null,
+          subAssemblyId: r.subAssemblyId ? subMap.get(r.subAssemblyId) ?? null : null,
+        });
       await many("childPart", childParts.filter((c) => !c.parentChildPartId).map(remapChild));
       await many("childPart", childParts.filter((c) => c.parentChildPartId).map(remapChild));
       const routeMap = idsFor(routes);
       await many(
         "route",
-        routes.map(({ steps: _s, ...r }) => copyOf(r as Row, routeMap.get(r.id)!, { ppapElementId: to(5), childPartId: r.childPartId ? cpMap.get(r.childPartId) ?? null : null })),
+        routes.map(({ steps: _s, ...r }) => copyOf(r as Row, routeMap.get(r.id)!, {
+            ppapElementId: to(5),
+            childPartId: r.childPartId ? cpMap.get(r.childPartId) ?? null : null,
+            subAssemblyId: r.subAssemblyId ? subMap.get(r.subAssemblyId) ?? null : null,
+          })),
       );
       await many("routeStep", routes.flatMap((r) => r.steps.map((s) => copyOf(s, randomUUID(), { routeId: routeMap.get(r.id)! }))));
 
