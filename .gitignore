@@ -62,3 +62,8 @@ next-env.d.ts
 .claude/settings.local.json
 *.tmp.mjs
 timing-clone.ts
+
+# AutoBalloon service (autoballoon-service/): local venv, job files and JSON store
+/autoballoon-service/.venv/
+/autoballoon-service/data/
+__pycache__/

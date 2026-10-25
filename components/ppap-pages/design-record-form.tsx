@@ -5,13 +5,6 @@ import {
   updateDesignRecordDetail,
   upsertSpecialCharacteristic,
   deleteSpecialCharacteristic,
-  uploadDrawingFile,
-  deleteDrawingFile,
-  renameDrawingFileRevision,
-  uploadBallooningImage,
-  removeBallooningImage,
-  upsertBalloon,
-  deleteBalloon,
 } from "@/lib/actions/design-record";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +18,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { formatDateIndia } from "@/lib/format";
 import type { Prisma } from "@/app/generated/prisma/client";
 
 type Detail = Prisma.DesignRecordDetailGetPayload<{
@@ -33,8 +25,6 @@ type Detail = Prisma.DesignRecordDetailGetPayload<{
 }> | null;
 type MaterialSpec = Prisma.MaterialSpecGetPayload<{ select: { id: true; standard: true; grade: true } }>;
 type SpecialCharacteristic = Prisma.SpecialCharacteristicGetPayload<object>;
-type DrawingFile = Prisma.DrawingFileGetPayload<object>;
-type Balloon = Prisma.BalloonGetPayload<object>;
 
 export function DesignRecordForm({
   ppapElementId,
@@ -43,8 +33,6 @@ export function DesignRecordForm({
   detail,
   materialSpecs,
   specialCharacteristics,
-  drawingFiles,
-  balloons,
 }: {
   ppapElementId: string;
   locked: boolean;
@@ -61,8 +49,6 @@ export function DesignRecordForm({
   detail: Detail;
   materialSpecs: MaterialSpec[];
   specialCharacteristics: SpecialCharacteristic[];
-  drawingFiles: DrawingFile[];
-  balloons: Balloon[];
 }) {
   return (
     <div className="space-y-8">
@@ -78,14 +64,9 @@ export function DesignRecordForm({
         locked={locked}
         rows={specialCharacteristics}
       />
-      <DrawingFilesSection ppapElementId={ppapElementId} locked={locked} files={drawingFiles} />
-      <BallooningSection
-        ppapElementId={ppapElementId}
-        locked={locked}
-        ballooningImageUrl={detail?.ballooningImageUrl ?? null}
-        ballooningImageName={detail?.ballooningImageName ?? null}
-        balloons={balloons}
-      />
+      {/* Drawing files, the ballooned drawing and the balloon table are now the
+          AutoBalloon workspace (design-record-autoballoon.tsx), shown below this
+          form; DrawingFilesSection / BallooningSection are no longer rendered. */}
     </div>
   );
 }
@@ -432,367 +413,6 @@ function SpecialCharacteristicsTable({
         ) : (
           <Button type="button" size="sm" variant="outline" className="mt-3" onClick={startAdd}>
             Add row
-          </Button>
-        )
-      ) : null}
-    </section>
-  );
-}
-
-function DrawingFilesSection({
-  ppapElementId,
-  locked,
-  files,
-}: {
-  ppapElementId: string;
-  locked: boolean;
-  files: DrawingFile[];
-}) {
-  const [isPending, startTransition] = useTransition();
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [revisionDraft, setRevisionDraft] = useState("");
-  const formRef = useRef<HTMLFormElement>(null);
-
-  function handleSubmit(formData: FormData) {
-    startTransition(async () => {
-      await uploadDrawingFile(ppapElementId, formData);
-      formRef.current?.reset();
-    });
-  }
-
-  function startEdit(f: DrawingFile) {
-    setEditingId(f.id);
-    setRevisionDraft(f.revision);
-  }
-
-  function saveRevision() {
-    if (!editingId) return;
-    startTransition(async () => {
-      await renameDrawingFileRevision(ppapElementId, editingId, revisionDraft);
-      setEditingId(null);
-    });
-  }
-
-  return (
-    <section>
-      <h3 className="mb-2 text-sm font-semibold">Drawing Files</h3>
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>File</TableHead>
-            <TableHead>Revision</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead>Uploaded</TableHead>
-            {!locked ? <TableHead className="w-40">Actions</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {files.map((f) => (
-            <TableRow key={f.id}>
-              <TableCell>
-                <a href={f.fileUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-                  {f.fileName}
-                </a>
-              </TableCell>
-              <TableCell>
-                {editingId === f.id ? (
-                  <Input
-                    value={revisionDraft}
-                    onChange={(e) => setRevisionDraft(e.target.value)}
-                    className="h-8 w-20"
-                  />
-                ) : (
-                  f.revision
-                )}
-              </TableCell>
-              <TableCell>
-                <Badge variant={f.status === "ACTIVE" ? "default" : "secondary"}>{f.status}</Badge>
-              </TableCell>
-              <TableCell>{formatDateIndia(f.uploadedAt)}</TableCell>
-              {!locked ? (
-                <TableCell className="flex gap-1">
-                  {editingId === f.id ? (
-                    <>
-                      <Button type="button" size="sm" disabled={isPending} onClick={saveRevision}>
-                        Save
-                      </Button>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => setEditingId(null)}>
-                        Cancel
-                      </Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => startEdit(f)}>
-                        Rename rev.
-                      </Button>
-                      <Button
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        disabled={isPending}
-                        onClick={() =>
-                          startTransition(async () => {
-                            await deleteDrawingFile(ppapElementId, f.id);
-                          })
-                        }
-                      >
-                        Delete
-                      </Button>
-                    </>
-                  )}
-                </TableCell>
-              ) : null}
-            </TableRow>
-          ))}
-          {files.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={locked ? 4 : 5} className="text-center text-muted-foreground">
-                No drawing files uploaded yet.
-              </TableCell>
-            </TableRow>
-          ) : null}
-        </TableBody>
-      </Table>
-
-      {!locked ? (
-        <form ref={formRef} action={handleSubmit} className="mt-3 flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
-            <Label htmlFor="drawing-revision">Revision</Label>
-            <Input id="drawing-revision" name="revision" defaultValue="H" className="w-24" required />
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor="drawing-file">File</Label>
-            <Input id="drawing-file" name="file" type="file" required />
-          </div>
-          <Button type="submit" size="sm" disabled={isPending}>
-            {isPending ? "Uploading..." : "Upload"}
-          </Button>
-        </form>
-      ) : null}
-    </section>
-  );
-}
-
-type BalloonDraft = { balloonNo: string; viewSection: string; description: string; nominal: string; tolerance: string };
-
-function BallooningSection({
-  ppapElementId,
-  locked,
-  ballooningImageUrl,
-  ballooningImageName,
-  balloons,
-}: {
-  ppapElementId: string;
-  locked: boolean;
-  ballooningImageUrl: string | null;
-  ballooningImageName: string | null;
-  balloons: Balloon[];
-}) {
-  const [isPending, startTransition] = useTransition();
-  const [adding, setAdding] = useState(false);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const imageFormRef = useRef<HTMLFormElement>(null);
-  const emptyDraft: BalloonDraft = {
-    balloonNo: String(balloons.length + 1),
-    viewSection: "",
-    description: "",
-    nominal: "",
-    tolerance: "",
-  };
-  const [draft, setDraft] = useState<BalloonDraft>(emptyDraft);
-
-  function handleImageSubmit(formData: FormData) {
-    startTransition(async () => {
-      await uploadBallooningImage(ppapElementId, formData);
-      imageFormRef.current?.reset();
-    });
-  }
-
-  function startAdd() {
-    setDraft({ ...emptyDraft, balloonNo: String(balloons.length + 1) });
-    setEditingId(null);
-    setAdding(true);
-  }
-
-  function startEdit(b: Balloon) {
-    setDraft({
-      balloonNo: String(b.balloonNo),
-      viewSection: b.viewSection ?? "",
-      description: b.description ?? "",
-      nominal: b.nominal ?? "",
-      tolerance: b.tolerance ?? "",
-    });
-    setAdding(false);
-    setEditingId(b.id);
-  }
-
-  function cancel() {
-    setAdding(false);
-    setEditingId(null);
-  }
-
-  function save() {
-    startTransition(async () => {
-      await upsertBalloon(ppapElementId, {
-        id: editingId ?? undefined,
-        ...draft,
-        balloonNo: Number(draft.balloonNo),
-      });
-      setAdding(false);
-      setEditingId(null);
-      setDraft(emptyDraft);
-    });
-  }
-
-  const editorOpen = adding || editingId !== null;
-
-  return (
-    <section>
-      <h3 className="mb-2 text-sm font-semibold">Ballooned Drawing</h3>
-
-      {ballooningImageUrl ? (
-        <div className="mb-3 flex items-center gap-3 text-sm">
-          <a href={ballooningImageUrl} target="_blank" rel="noreferrer" className="text-primary hover:underline">
-            {ballooningImageName ?? "View ballooned drawing"}
-          </a>
-          {!locked ? (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              disabled={isPending}
-              onClick={() => startTransition(async () => { await removeBallooningImage(ppapElementId); })}
-            >
-              Remove
-            </Button>
-          ) : null}
-        </div>
-      ) : (
-        <p className="mb-3 text-sm text-muted-foreground">No ballooned drawing uploaded yet.</p>
-      )}
-
-      {!locked ? (
-        <form ref={imageFormRef} action={handleImageSubmit} className="mb-4 flex flex-wrap items-end gap-2">
-          <div className="space-y-1">
-            <Label htmlFor="ballooning-file">Upload image/PDF</Label>
-            <Input id="ballooning-file" name="file" type="file" required />
-          </div>
-          <Button type="submit" size="sm" disabled={isPending}>
-            {isPending ? "Uploading..." : "Upload"}
-          </Button>
-        </form>
-      ) : null}
-
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Balloon No.</TableHead>
-            <TableHead>View/Section</TableHead>
-            <TableHead>Description</TableHead>
-            <TableHead>Nominal</TableHead>
-            <TableHead>Tolerance</TableHead>
-            {!locked ? <TableHead className="w-32">Actions</TableHead> : null}
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {balloons.map((b) => (
-            <TableRow key={b.id}>
-              <TableCell>{b.balloonNo}</TableCell>
-              <TableCell>{b.viewSection ?? "—"}</TableCell>
-              <TableCell>{b.description ?? "—"}</TableCell>
-              <TableCell>{b.nominal ?? "—"}</TableCell>
-              <TableCell>{b.tolerance ?? "—"}</TableCell>
-              {!locked ? (
-                <TableCell className="flex gap-1">
-                  <Button type="button" variant="ghost" size="sm" onClick={() => startEdit(b)}>
-                    Edit
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    disabled={isPending}
-                    onClick={() =>
-                      startTransition(async () => {
-                        await deleteBalloon(ppapElementId, b.id);
-                      })
-                    }
-                  >
-                    Delete
-                  </Button>
-                </TableCell>
-              ) : null}
-            </TableRow>
-          ))}
-          {balloons.length === 0 ? (
-            <TableRow>
-              <TableCell colSpan={locked ? 5 : 6} className="text-center text-muted-foreground">
-                No balloons yet.
-              </TableCell>
-            </TableRow>
-          ) : null}
-        </TableBody>
-      </Table>
-
-      {!locked ? (
-        editorOpen ? (
-          <div className="mt-3 flex flex-wrap items-end gap-2">
-            <div className="space-y-1">
-              <Label htmlFor="balloon-no">Balloon No.</Label>
-              <Input
-                id="balloon-no"
-                type="number"
-                value={draft.balloonNo}
-                onChange={(e) => setDraft((d) => ({ ...d, balloonNo: e.target.value }))}
-                className="w-20"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="balloon-view-section">View/Section</Label>
-              <Input
-                id="balloon-view-section"
-                value={draft.viewSection}
-                onChange={(e) => setDraft((d) => ({ ...d, viewSection: e.target.value }))}
-                className="w-32"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="balloon-description">Description</Label>
-              <Input
-                id="balloon-description"
-                value={draft.description}
-                onChange={(e) => setDraft((d) => ({ ...d, description: e.target.value }))}
-                className="w-48"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="balloon-nominal">Nominal</Label>
-              <Input
-                id="balloon-nominal"
-                value={draft.nominal}
-                onChange={(e) => setDraft((d) => ({ ...d, nominal: e.target.value }))}
-                className="w-24"
-              />
-            </div>
-            <div className="space-y-1">
-              <Label htmlFor="balloon-tolerance">Tolerance</Label>
-              <Input
-                id="balloon-tolerance"
-                value={draft.tolerance}
-                onChange={(e) => setDraft((d) => ({ ...d, tolerance: e.target.value }))}
-                className="w-24"
-              />
-            </div>
-            <Button type="button" size="sm" disabled={!draft.balloonNo || isPending} onClick={save}>
-              {editingId ? "Save" : "Add"}
-            </Button>
-            <Button type="button" size="sm" variant="ghost" onClick={cancel}>
-              Cancel
-            </Button>
-          </div>
-        ) : (
-          <Button type="button" size="sm" variant="outline" className="mt-3" onClick={startAdd}>
-            Add balloon
           </Button>
         )
       ) : null}

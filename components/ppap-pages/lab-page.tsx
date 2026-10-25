@@ -7,6 +7,8 @@ import { StatusBadge, ApplicabilityBadge } from "@/components/status-badge";
 import { SignatureBlock } from "@/components/signature-block";
 import { LabAddReport } from "@/components/ppap-pages/lab-add-report";
 import { LabReportCard } from "@/components/ppap-pages/lab-report-card";
+import { LabMcrSection } from "@/components/ppap-pages/lab-mcr-section";
+import { getMcrData } from "@/lib/data/mcr";
 
 export async function LabPage({ ppapId }: { ppapId: string }) {
   const element = await prisma.ppapElement.findUniqueOrThrow({
@@ -39,9 +41,40 @@ export async function LabPage({ ppapId }: { ppapId: string }) {
   const heatOptions = await getHeatBatchOptionsForPpap(ppapId);
 
   const locked = element.status === "APPROVED";
+  const mcr = await getMcrData(ppapId);
 
   return (
     <main className="mx-auto max-w-7xl space-y-4 p-6">
+      {element.applicability === "NA" ? null : (
+        <Card>
+          <CardHeader>
+            <CardTitle>Lab Report Documents &amp; Material Clearance Record</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <LabMcrSection
+              ppapId={ppapId}
+              ppapElementId={element.id}
+              locked={locked || mcr.ppapStatus === "CLOSED"}
+              documents={mcr.documents.map((d) => ({
+                id: d.id,
+                fileUrl: d.fileUrl,
+                fileName: d.fileName,
+                extractionStatus: d.extractionStatus,
+                extractionError: d.extractionError,
+                labName: d.labName,
+                materialSpec: d.materialSpec,
+                heatNo: d.heatNo,
+                plateNo: d.plateNo,
+                sizeText: d.sizeText,
+                tests: d.tests,
+              }))}
+              header={{ partNumber: mcr.header.partNumber, partName: mcr.header.partName, values: mcr.header }}
+              groups={mcr.groups}
+            />
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle>12. Lab Reports / Qualified Laboratory Documentation</CardTitle>
@@ -49,7 +82,7 @@ export async function LabPage({ ppapId }: { ppapId: string }) {
             <ApplicabilityBadge applicability={element.applicability} />
             <StatusBadge status={element.status} />
             <Button
-              render={<Link href={`/ppap/${ppapId}/12/print`} target="_blank" />}
+              render={<a href={`/api/ppap/${ppapId}/12/mcr`} target="_blank" rel="noreferrer" />}
               nativeButton={false}
               variant="outline"
               size="sm"

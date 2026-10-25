@@ -4,6 +4,7 @@ import JSZip from "jszip";
 import { PDFDocument, PageSizes } from "pdf-lib";
 import { prisma } from "@/lib/prisma";
 import { resolveStoredFilePath } from "@/lib/storage";
+import { autoballoonFetch } from "@/lib/autoballoon";
 import { renderPrintRoutesToPdfs } from "@/lib/pdf";
 import { addOutline, type OutlineItem } from "@/lib/pdf-outline";
 import { getCheckingAidsForPpap } from "@/lib/instruments";
@@ -46,6 +47,14 @@ export async function getPackManifest(ppapId: string): Promise<{ included: PackE
   for (const f of await prisma.drawingFile.findMany({ where: { ppapElementId: id(1), status: "ACTIVE" }, orderBy: { uploadedAt: "asc" } })) add(1, f.fileName, f.fileUrl, `Drawing (Rev ${f.revision})`);
   const dr = await prisma.designRecordDetail.findUnique({ where: { ppapElementId: id(1) } });
   add(1, dr?.ballooningImageName, dr?.ballooningImageUrl, "Ballooned drawing");
+  // Design Records' AutoBalloon workspace: ballooned drawing + inspection report,
+  // fetched from the service when the pack is built (readStored); the links
+  // go through the PPAP proxy so they also open from the pack page.
+  if (dr?.autoballoonJobId) {
+    const base = `/api/ppap/${encodeURIComponent(ppapId)}/autoballoon/api/jobs/${encodeURIComponent(dr.autoballoonJobId)}`;
+    add(1, "Ballooned drawing.pdf", `${base}/download/ballooned`, "Ballooned drawing");
+    add(1, "Inspection report.pdf", `${base}/report/pdf`, "Inspection report");
+  }
   for (const a of await prisma.ceaAttachment.findMany({ where: { ppapElementId: id(3) }, orderBy: { uploadedAt: "asc" } })) add(3, a.fileName, a.fileUrl, "CEA attachment");
   for (const r of await prisma.rmtcReportRow.findMany({ where: { rmtcReportDetail: { ppapElementId: id(10) } }, orderBy: { sortOrder: "asc" } })) {
     add(10, r.mtcFileName ?? `MTC ${r.millTcNo ?? r.slNo}`, r.mtcFileUrl, `Mill test certificate${r.heatNo ? ` — heat ${r.heatNo}` : ""}`);
@@ -74,7 +83,21 @@ export async function getPackManifest(ppapId: string): Promise<{ included: PackE
   };
 }
 
+/** AutoBalloon proxy URL (see getPackManifest) → the service path it forwards to. */
+const AUTOBALLOON_PACK_URL = /^\/api\/ppap\/[^/]+\/autoballoon(\/api\/jobs\/[^/]+\/(download\/ballooned|report\/pdf))$/;
+
 async function readStored(url: string): Promise<Buffer | null> {
+  const autoballoon = AUTOBALLOON_PACK_URL.exec(url);
+  if (autoballoon) {
+    // Already authorised by the pack route; a stopped service or a job without
+    // balloons just leaves these two files out, like a missing stored file.
+    try {
+      const res = await autoballoonFetch(autoballoon[1]);
+      return res.ok ? Buffer.from(await res.arrayBuffer()) : null;
+    } catch {
+      return null;
+    }
+  }
   if (!url.startsWith("/api/files/")) return null;
   try {
     return await readFile(resolveStoredFilePath(url.slice("/api/files/".length).split("/").map(decodeURIComponent)));

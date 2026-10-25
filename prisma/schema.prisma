@@ -436,6 +436,8 @@ model PpapElement {
   rmtcReportDetail        RmtcReportDetail?
   spcStudies              SpcStudy[]
   labReports              LabReport[]
+  labDocuments            LabDocument[]
+  mcrRecord               McrRecord?
   aarDetail               AarDetail?
   aarCriteriaRows         AarCriteriaRow[]
   sppDetail               SppDetail?
@@ -512,6 +514,12 @@ model DesignRecordDetail {
 
   ballooningImageUrl  String?
   ballooningImageName String?
+
+  /// Job in the AutoBalloon service (autoballoon-service/) holding this
+  /// part's uploaded drawing, balloons and inspection report. Set by the
+  /// /api/ppap/[id]/autoballoon proxy on upload; the report's rows are
+  /// synced into `Balloon` (lib/autoballoon-sync.ts).
+  autoballoonJobId String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1770,6 +1778,70 @@ model LabReport {
 /// Which tests were performed and how — default 6 rows seeded the first
 /// time a report is touched (chemical analysis, tensile, hardness, impact,
 /// coating thickness (DFT), adhesion), editable/removable thereafter.
+/// An uploaded lab report file (PDF / JPG / PNG) on element 12, for the
+/// Material Clearance Record (MCR) cover page and its print-out. Separate from
+/// LabReport (the structured "12. LAB Reports" sheet, which keeps its own single
+/// signed-PDF upload). Each file is read by Claude on upload
+/// (lib/lab-document-extract.ts); the fields below are what was read, then
+/// corrected by the user on the review screen. Upload order = `sortOrder`.
+model LabDocument {
+  id            String      @id @default(cuid())
+  ppapElementId String
+  ppapElement   PpapElement @relation(fields: [ppapElementId], references: [id])
+
+  fileUrl  String
+  fileName String
+  fileType String
+
+  /// PENDING (not read yet) | READ | FAILED (see extractionError).
+  extractionStatus String  @default("PENDING")
+  extractionError  String?
+
+  labName      String?
+  materialSpec String?
+  heatNo       String?
+  plateNo      String?
+  sizeText     String?
+  /// Tests certified in this file: [{ type: "C"|"M"|"I"|"H"|"UT"|…, reportNo, date: "DD-MM-YYYY" }].
+  tests Json @default("[]")
+
+  sortOrder    Int      @default(0)
+  uploadedById String?
+  uploadedAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([ppapElementId])
+  @@map("lab_documents")
+}
+
+/// The MCR cover page for one PPAP (element 12): header fields that no lab
+/// report carries, plus the material groups. Groups are built from the lab
+/// documents (lib/calc/mcr.ts) and then edited — item codes, item
+/// description, etc. are typed here. JSON validated by `mcrGroupsSchema`.
+model McrRecord {
+  id            String      @id @default(cuid())
+  ppapElementId String      @unique
+  ppapElement   PpapElement @relation(fields: [ppapElementId], references: [id])
+
+  issueNumber   String?
+  qty           String?
+  projectName   String?
+  poNumber      String?
+  serialNumbers String?
+  location      String?
+  mcrNumber     String?
+  supplierName  String?
+  /// As printed, DD/MM/YYYY.
+  mcrDate       String?
+
+  groups Json @default("[]")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("mcr_records")
+}
+
 model LabTestDetail {
   id          String    @id @default(cuid())
   labReportId String

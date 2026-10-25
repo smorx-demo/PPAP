@@ -198,6 +198,68 @@ reference workbook's SPC study (sample size 25, 5 subgroups of 5,
 USL=76/LSL=75.645, giving `Cp≈1.072`, `Cpk≈0.9537`) and the Checking Aids
 calibration-due rule (`dueDate < today + 15 days` → "Due is near").
 
+## Design Records (element 1) — AutoBalloon integration (2026-10-25)
+
+- Drawing upload → auto ballooning → inspection report → PDF/Excel/CSV
+  downloads use the AutoBalloon software from
+  smorx-demo/Autoballooning-with-versions (commit ce94647), not hand-built
+  PPAP code. Backend vendored as `autoballoon-service/` (FastAPI + PyMuPDF,
+  Python 3.11, local JSON store + files in `autoballoon-service/data/`; run
+  `autoballoon-service\start-ppap.bat`, port 9686). PPAP patch: no default S3
+  bucket (it defaulted to SmorX's production bucket). Its UI
+  (`InspectionPage` + canvas) is ported to `components/autoballoon/` without
+  login/admin/licence screens; CSS scoped under `.ab-root`
+  (`autoballoon.css`); both folders are lint-ignored (vendored) but
+  type-checked.
+- The browser only talks to `app/api/ppap/[id]/autoballoon/[...path]`, which
+  applies PPAP access rules (customer scope; changes need a supplier user,
+  unapproved page, open PPAP), allows only job / drawing-version /
+  instrument-rule paths, and forwards with one service account
+  (`AUTOBALLOON_URL` / `_USERNAME` / `_PASSWORD` in `.env`, matching
+  `SUPERADMIN_*` in `autoballoon-service/.env`). A job is usable only from the
+  PPAP it was uploaded on (`DesignRecordDetail.autoballoonJobId`, set on
+  upload).
+- Saving / rebuilding the report re-syncs element 1's `Balloon` rows
+  (`lib/autoballoon-sync.ts`, mapping in `lib/calc/autoballoon.ts`) so the
+  Dimensional Report keeps generating; removed balloons unlink their
+  Dimensional Report rows first. The old Drawing Files / ballooned-image /
+  manual balloon sections are no longer on the page.
+- Page order (user request 2026-10-25): card 1 = Design Record details +
+  special characteristics; card 2 = the AutoBalloon workspace with the
+  inspection report inline below the drawing panels (`InspectionPage
+  inlineReport`: shown from the saved rows whenever the job has balloons, no
+  rebuild on load; top button "Refresh inspection report"); card 3 = the
+  Prepared / Approved sign-off.
+- Pack: when `autoballoonJobId` is set, element 1 gets two attachments —
+  the ballooned drawing PDF and the inspection report PDF — listed with
+  proxy URLs and fetched from the service at build time (`readStored` in
+  `lib/pack.ts`); a stopped service just leaves them out.
+- Not yet: the report PDF still carries SmorX branding; the element 1 print
+  view is unchanged.
+
+## Lab Reports (element 12) — Material Clearance Record (2026-10-25)
+
+- "Lab Report Documents & Material Clearance Record" card (`lab-mcr-section.tsx`,
+  actions `lib/actions/mcr.ts`): multi-file upload (PDF/PNG/JPG) into
+  `LabDocument` (upload order = `sortOrder`), each read by Claude
+  (`lib/lab-document-extract.ts`, `claude-opus-5-5`, structured output,
+  `fallbacks: "default"`; needs `ANTHROPIC_API_KEY`, else the user fills fields
+  by hand). Separate from `LabReport` (the structured sheet, unchanged).
+- `McrRecord` (one per PPAP) holds header fields no lab report carries and the
+  material groups (JSON, `mcrGroupsSchema`). Grouping = same heat/plate no. +
+  spec (`lib/calc/mcr.ts buildMcrGroups`); material ID + mill TC come from the RM
+  Test Report row with that heat no.; typed values always win. The print folds
+  every read report in automatically (`printGroups`), so the cover always
+  describes the files after it, and lists them ("Enclosed lab reports").
+- Print = header **Print** button → `GET /api/ppap/[id]/12/mcr`
+  (`lib/mcr-print.ts`): cover from `/ppap/[id]/12/mcr` (A4 landscape,
+  `paginateMcr` — header + table header repeat, rows never split, groups ≥ 8
+  codes may continue "contd.", "MCR <no> – Page X of Y", sign-off last), then
+  each file in order (PDF pages, images one per page); an unreadable file gets a
+  page naming it. Layout source: "MCR 109300003635- NEW REV-9 (Updated)1.xlsx".
+- `e2e/lab.spec.ts` line 55 (Mn NG after reload) fails on the Neon setup
+  independently of this work: it reloads 500 ms after blur, before the save lands.
+
 ## Process Flow (element 5) assembly structure
 
 - Stage → Sub-assembly → Child part (user request 2026-10-22): `PfcStage`

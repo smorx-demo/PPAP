@@ -1,0 +1,99 @@
+from __future__ import annotations
+
+import logging
+import os
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+
+from app.core.config import STATIC, cors_origin_list, settings
+from app.core.security import hash_password
+from app.services import auth_service
+from app.utils import s3_base_url, s3_enabled, storage_mode
+
+ADMIN_PORTAL_ONLY = settings.costsheet_admin_portal_only
+
+from app.api.routes import auth, customers, users
+if not ADMIN_PORTAL_ONLY:
+    from app.api.routes import autoballoon
+
+app = FastAPI(title="Cost Sheet Admin API" if ADMIN_PORTAL_ONLY else "SmorX AutoBalloon API", version="1.0.0")
+DB_MODE = "unknown"
+
+# Extra production frontend origins (comma-separated), set via env at deploy time
+# so hosting domains don't require a code change/rebuild to allow.
+_extra_origins = [
+    o.strip() for o in os.getenv("EXTRA_CORS_ORIGINS", "").split(",") if o.strip()
+]
+
+_allowed_origins = [
+    "http://127.0.0.1:9835",
+    "http://localhost:9835",
+    "http://127.0.0.1:1420",
+    "http://localhost:1420",
+    "tauri://localhost",
+    "https://tauri.localhost",
+    "http://tauri.localhost",
+    "https://localhost",
+    "http://localhost",
+    *cors_origin_list(),
+    *_extra_origins,
+]
+if not ADMIN_PORTAL_ONLY:
+    _allowed_origins.append("https://autoballoon-web-135072000552.us-central1.run.app")
+
+app.add_middleware(
+    CORSMiddleware,
+    # Explicit origins required when Authorization credentials are sent
+    # (allow_origins=["*"] + allow_credentials=True breaks browser/WebView fetch).
+    allow_origins=_allowed_origins,
+    allow_origin_regex=r"https?://(localhost|127\.0\.0\.1|tauri\.localhost)(:\d+)?",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    # Required for AutoBalloon.exe (WebView2 https://tauri.localhost → API on localhost/LAN)
+    allow_private_network=True,
+)
+
+app.include_router(auth.router)
+app.include_router(users.router)
+app.include_router(customers.router)
+if not ADMIN_PORTAL_ONLY:
+    app.include_router(autoballoon.router)
+    from app.api.routes import drawing_versions
+    app.include_router(drawing_versions.router)
+    from app.api.routes import app_settings
+    app.include_router(app_settings.router)
+
+if STATIC.exists():
+    app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+
+
+@app.on_event("startup")
+def _startup():
+    global DB_MODE
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    try:
+        if not ADMIN_PORTAL_ONLY:
+            from app.services.autoballoon_engine import _resolve_tessdata
+
+            _resolve_tessdata()
+    except Exception:
+        pass
+    DB_MODE = auth_service.startup(hash_password)
+
+
+@app.get("/api/health")
+def health():
+    # Keep this instant — OCR/DB probes here made the EXE look "unreachable".
+    payload: dict = {
+        "ok": True,
+        "service": "costsheet-admin" if ADMIN_PORTAL_ONLY else "smorx-autoballoon",
+        "db": DB_MODE,
+        "storage": storage_mode(),
+    }
+    if s3_enabled():
+        payload["s3_bucket"] = settings.aws_s3_bucket
+        payload["s3_url"] = s3_base_url()
+    return payload

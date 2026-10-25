@@ -12,7 +12,17 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
-    ignores: [".next/**", "out/**", "build/**", "next-env.d.ts", "app/generated/**"],
+    ignores: [
+      ".next/**",
+      "out/**",
+      "build/**",
+      "next-env.d.ts",
+      "app/generated/**",
+      // Vendored from smorx-demo/Autoballooning-with-versions (kept close to
+      // upstream so it can be re-synced); type-checked, but not held to our lint rules.
+      "components/autoballoon/**",
+      "autoballoon-service/**",
+    ],
   },
 ];
 
