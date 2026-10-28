@@ -234,6 +234,11 @@ calibration-due rule (`dueDate < today + 15 days` → "Due is near").
   the ballooned drawing PDF and the inspection report PDF — listed with
   proxy URLs and fetched from the service at build time (`readStored` in
   `lib/pack.ts`); a stopped service just leaves them out.
+- Deployment (Render, 2026-10-28): the service is its own Render private
+  service created in the dashboard (`ppap-autoballoon`, Docker, root dir
+  `autoballoon-service`, persistent disk at `/app/data`, `UVICORN_WORKERS=1`,
+  listens on `$PORT`). The web app reaches it at
+  `AUTOBALLOON_URL=http://ppap-autoballoon:9686` (same region required).
 - Not yet: the report PDF still carries SmorX branding; the element 1 print
   view is unchanged.
 

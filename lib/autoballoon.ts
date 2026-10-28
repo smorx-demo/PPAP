@@ -26,7 +26,7 @@ async function login(): Promise<string> {
     });
   } catch {
     throw new AutoballoonUnavailableError(
-      `The AutoBalloon service is not running at ${baseUrl()}. Start it with autoballoon-service\\start-ppap.bat.`,
+      `The AutoBalloon service is not reachable at ${baseUrl()}. Locally, start it with autoballoon-service\\start-ppap.bat; on a server, check AUTOBALLOON_URL.`,
     );
   }
   if (!res.ok) throw new AutoballoonUnavailableError(`AutoBalloon service login failed (${res.status}). Check AUTOBALLOON_USERNAME / _PASSWORD.`);
@@ -49,7 +49,7 @@ export async function autoballoonFetch(path: string, init: RequestInit = {}): Pr
       return await fetch(`${baseUrl()}${path}`, { ...init, headers, cache: "no-store", redirect: "manual" });
     } catch {
       throw new AutoballoonUnavailableError(
-        `The AutoBalloon service is not running at ${baseUrl()}. Start it with autoballoon-service\\start-ppap.bat.`,
+        `The AutoBalloon service is not reachable at ${baseUrl()}. Locally, start it with autoballoon-service\\start-ppap.bat; on a server, check AUTOBALLOON_URL.`,
       );
     }
   };

@@ -32,7 +32,7 @@ function withAuthQuery(path: string): string {
 
 function apiUnreachableMessage(detail?: string) {
   const extra = detail ? ` (${detail})` : "";
-  return `Cannot reach the AutoBalloon service${extra}. Start it with autoballoon-service\\start-ppap.bat (port 9686) and try again.`;
+  return `Cannot reach the AutoBalloon service${extra}. Locally, start it with autoballoon-service\\start-ppap.bat (port 9686); on a server, check AUTOBALLOON_URL.`;
 }
 
 async function fetchApi(path: string, init: RequestInit = {}): Promise<Response> {
